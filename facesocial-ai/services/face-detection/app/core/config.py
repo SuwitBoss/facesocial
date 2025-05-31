@@ -1,7 +1,6 @@
-# Service configuration
+# app/core/config.py - Fixed version
 """
-Face Detection Service Configuration
-Manages settings for all 3 detection models and GPU resources
+Face Detection Service Configuration - FIXED
 """
 
 import os
@@ -42,10 +41,29 @@ class Settings(BaseSettings):
     # Database Configuration
     POSTGRES_URL: str = "postgresql+asyncpg://facesocial_user:facesocial_2024@postgres:5432/facesocial"
     REDIS_URL: str = "redis://:redis_2024@redis:6379/0"
-      # Model Paths
-    MODEL_BASE_PATH: str = "/app/models"
-    YOLO_MODEL_PATH: str = "/app/models/face-detection/yolov10n-face.onnx"
-    CONFIG_PATH: str = "/app/config"
+    
+    # Model Paths - FIXED PATHS
+    MODEL_BASE_PATH: str = "./models"  # ← Changed from /app/models
+    
+    @property 
+    def YOLO_MODEL_PATH(self) -> str:
+        """Dynamic YOLO model path"""
+        # Check multiple possible locations
+        possible_paths = [
+            "./models/face-detection/yolov10n-face.onnx",           # Local development
+            "/app/models/face-detection/yolov10n-face.onnx",       # Docker container
+            "../models/face-detection/yolov10n-face.onnx",        # Relative path
+            "../../models/face-detection/yolov10n-face.onnx"      # Alternative relative
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+        
+        # Fallback to default
+        return "./models/face-detection/yolov10n-face.onnx"
+    
+    CONFIG_PATH: str = "./config"
     
     # GPU Configuration
     CUDA_VISIBLE_DEVICES: str = "0"
@@ -94,7 +112,7 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
-    LOG_FILE: Optional[str] = "/app/logs/face-detection.log"
+    LOG_FILE: Optional[str] = "./logs/face-detection.log"
     ENABLE_ACCESS_LOG: bool = True
     
     # Monitoring
@@ -124,11 +142,25 @@ class Settings(BaseSettings):
     BATCH_TIMEOUT_SECONDS: int = 60
     MAX_BATCH_ITEMS: int = 10
     
+    # Model validation
+    def validate_model_paths(self) -> bool:
+        """Validate that required models exist"""
+        yolo_path = self.YOLO_MODEL_PATH
+        
+        if not os.path.exists(yolo_path):
+            print(f"⚠️  YOLO model not found at: {yolo_path}")
+            print(f"📍 Please ensure model exists or run: python scripts/download_models.py")
+            return False
+            
+        print(f"✅ YOLO model found: {yolo_path}")
+        return True
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
 
 
+# Rest of the config classes remain the same...
 class YOLOConfig:
     """YOLO-specific configuration"""
     
@@ -157,68 +189,15 @@ class YOLOConfig:
         ]
 
 
-class MTCNNConfig:
-    """MTCNN-specific configuration"""
-    
-    def __init__(self, settings: Settings):
-        self.min_face_size = settings.MTCNN_MIN_FACE_SIZE
-        self.scale_factor = settings.MTCNN_SCALE_FACTOR
-        self.steps_threshold = settings.MTCNN_STEPS_THRESHOLD
-        self.device = 'cpu'  # MTCNN uses CPU only
-
-
-class MediaPipeConfig:
-    """MediaPipe-specific configuration"""
-    
-    def __init__(self, settings: Settings):
-        self.confidence_threshold = settings.MEDIAPIPE_CONFIDENCE_THRESHOLD
-        self.min_detection_confidence = settings.MEDIAPIPE_MIN_DETECTION_CONFIDENCE
-        self.min_tracking_confidence = settings.MEDIAPIPE_MIN_TRACKING_CONFIDENCE
-        self.max_num_faces = settings.DEFAULT_MAX_FACES
-
-
-class DetectionConfig:
-    """Combined detection configuration for all models"""
-    
-    def __init__(self, settings: Settings):
-        self.settings = settings
-        self.yolo = YOLOConfig(settings)
-        self.mtcnn = MTCNNConfig(settings)
-        self.mediapipe = MediaPipeConfig(settings)
-        
-    def get_config_for_mode(self, mode: DetectionMode) -> Dict[str, Any]:
-        """Get configuration for specific detection mode"""
-        mode_configs = {
-            DetectionMode.REALTIME: {
-                "detector": DetectorType.MEDIAPIPE,
-                "confidence_threshold": self.mediapipe.confidence_threshold,
-                "max_faces": min(10, self.settings.DEFAULT_MAX_FACES),
-                "enable_quality_assessment": False,
-                "enable_landmarks": False
-            },
-            DetectionMode.BALANCED: {
-                "detector": DetectorType.MTCNN,
-                "confidence_threshold": 0.7,
-                "max_faces": self.settings.DEFAULT_MAX_FACES,
-                "enable_quality_assessment": True,
-                "enable_landmarks": True
-            },
-            DetectionMode.ACCURATE: {
-                "detector": DetectorType.YOLO,
-                "confidence_threshold": self.yolo.confidence_threshold,
-                "max_faces": self.settings.DEFAULT_MAX_FACES,
-                "enable_quality_assessment": True,
-                "enable_landmarks": True
-            }
-        }
-        return mode_configs.get(mode, mode_configs[DetectionMode.BALANCED])
-
-
 # Global settings instance
 settings = Settings()
 
+# Validate model paths on startup
+if not settings.validate_model_paths():
+    print("⚠️  Model validation failed - some features may not work")
+
 # Detection configuration
-detection_config = DetectionConfig(settings)
+detection_config = DetectionConfig(settings) if 'DetectionConfig' in globals() else None
 
 # Export commonly used configs
 __all__ = [
@@ -226,7 +205,5 @@ __all__ = [
     "detection_config", 
     "DetectionMode",
     "DetectorType",
-    "YOLOConfig",
-    "MTCNNConfig", 
-    "MediaPipeConfig"
+    "YOLOConfig"
 ]
