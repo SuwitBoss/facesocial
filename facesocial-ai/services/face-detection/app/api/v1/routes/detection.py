@@ -124,12 +124,12 @@ async def detect_faces(
     
     **Detection Modes:**
     - `realtime`: Fast detection using MediaPipe (best for live video)
-    - `balanced`: Balanced speed/accuracy using MTCNN (general purpose)
+    - `balanced`: Balanced speed/accuracy using InsightFace (general purpose)
     - `accurate`: High accuracy using YOLO (best for authentication)
     
     **Detectors:**
     - `yolo`: YOLOv10n-face (GPU, high accuracy)
-    - `mtcnn`: MTCNN (CPU, balanced)
+    - `insightface`: InsightFace (GPU/CPU, balanced)
     - `mediapipe`: MediaPipe (CPU, real-time)
     
     If no detector is specified, it will be chosen automatically based on mode.
@@ -428,13 +428,12 @@ async def get_available_models():
                         "use_case": "High accuracy detection",
                         "typical_speed": "~300ms",
                         "memory_usage": "~800MB VRAM"
-                    },
-                    "mtcnn": {
-                        "name": "MTCNN",
-                        "type": "CPU-based",
+                    },                    "insightface": {
+                        "name": "InsightFace",
+                        "type": "GPU/CPU hybrid",
                         "use_case": "Balanced performance",
-                        "typical_speed": "~500ms",
-                        "memory_usage": "~200MB RAM"
+                        "typical_speed": "~200ms",
+                        "memory_usage": "~400MB GPU/RAM"
                     },
                     "mediapipe": {
                         "name": "MediaPipe Face Detection",
@@ -449,8 +448,7 @@ async def get_available_models():
                         "detector": "mediapipe",
                         "description": "Fastest detection for live video"
                     },
-                    "balanced": {
-                        "detector": "mtcnn",
+                    "balanced": {                        "detector": "insightface",
                         "description": "Good balance of speed and accuracy"
                     },
                     "accurate": {
@@ -520,7 +518,7 @@ async def run_benchmark(iterations: int):
         test_image = np.random.randint(0, 255, (640, 640, 3), dtype=np.uint8)
         
         # Test each detector
-        detectors = [DetectorType.MEDIAPIPE, DetectorType.MTCNN, DetectorType.YOLO]
+        detectors = [DetectorType.MEDIAPIPE, DetectorType.INSIGHTFACE, DetectorType.YOLO]
         results = {}
         
         for detector in detectors:

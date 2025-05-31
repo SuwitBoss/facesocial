@@ -1,13 +1,18 @@
 """
 Face Detection Service - Main FastAPI Application
-Supports YOLO, MTCNN, and MediaPipe detectors with automatic model selection
+Supports YOLO, InsightFace, and MediaPipe detectors with automatic model selection
 """
 
+import os
 import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Dict, Any
+
+# Force CPU-only execution for CUDA compatibility
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+os.environ['ORT_LOGGING_LEVEL'] = '4'  # Only fatal errors for ONNX Runtime
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -74,7 +79,7 @@ app = FastAPI(
     description="""
     Advanced Face Detection Service with multiple AI models:
     - YOLOv10n-face: High accuracy detection
-    - MTCNN: Balanced performance 
+    - InsightFace: Balanced performance 
     - MediaPipe: Real-time detection
     
     Automatic model selection based on use case with GPU memory management.

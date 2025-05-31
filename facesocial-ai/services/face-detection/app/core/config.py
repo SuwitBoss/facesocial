@@ -16,14 +16,14 @@ except ImportError:
 class DetectionMode(str, Enum):
     """Detection modes for different use cases"""
     REALTIME = "realtime"    # MediaPipe - fastest
-    BALANCED = "balanced"    # MTCNN - balanced speed/accuracy  
+    BALANCED = "balanced"    # InsightFace - balanced speed/accuracy  
     ACCURATE = "accurate"    # YOLO - highest accuracy
 
 
 class DetectorType(str, Enum):
     """Available detector types"""
     YOLO = "yolo"
-    MTCNN = "mtcnn"
+    INSIGHTFACE = "insightface"
     MEDIAPIPE = "mediapipe"
 
 
@@ -75,10 +75,9 @@ class Settings(BaseSettings):
         return primary_path
     
     CONFIG_PATH: str = "./config"
-    
-    # GPU Configuration
-    CUDA_VISIBLE_DEVICES: str = "0"
-    VRAM_LIMIT_MB: int = 4800  # 6GB * 0.8
+      # GPU Configuration - FORCED CPU-ONLY DUE TO CUDA LIBRARY COMPATIBILITY
+    CUDA_VISIBLE_DEVICES: str = ""  # Disable CUDA devices (was "0", changed for compatibility)
+    VRAM_LIMIT_MB: int = 4800  # 6GB * 0.8 (not used in CPU mode)
     MAX_BATCH_SIZE: int = 4
     MODEL_CACHE_SIZE: int = 2
     CUDA_MEMORY_FRACTION: float = 0.8
@@ -93,12 +92,11 @@ class Settings(BaseSettings):
     YOLO_INPUT_SIZE: tuple = (640, 640)
     YOLO_CONFIDENCE_THRESHOLD: float = 0.25
     YOLO_IOU_THRESHOLD: float = 0.45
-    YOLO_WARMUP_RUNS: int = 3
-    
-    # MTCNN Configuration
-    MTCNN_MIN_FACE_SIZE: int = 20
-    MTCNN_SCALE_FACTOR: float = 0.709
-    MTCNN_STEPS_THRESHOLD: List[float] = [0.6, 0.7, 0.7]
+    YOLO_WARMUP_RUNS: int = 3    # InsightFace Configuration - FORCED CPU-ONLY DUE TO CUDA LIBRARY COMPATIBILITY
+    INSIGHTFACE_MODEL_NAME: str = "buffalo_l"  # buffalo_l, buffalo_m, buffalo_s
+    INSIGHTFACE_DET_SIZE: tuple = (640, 640)
+    INSIGHTFACE_CTX_ID: int = -1  # CPU-only execution (was 0 for GPU, changed due to CUDA compatibility issues)
+    INSIGHTFACE_CONFIDENCE_THRESHOLD: float = 0.7
     
     # MediaPipe Configuration
     MEDIAPIPE_CONFIDENCE_THRESHOLD: float = 0.5
@@ -134,12 +132,11 @@ class Settings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 100
     RATE_LIMIT_PER_HOUR: int = 1000
-    
-    # Auto-detection Strategy
+      # Auto-detection Strategy
     AUTO_FALLBACK_ENABLED: bool = True
     FALLBACK_ORDER: List[DetectorType] = [
         DetectorType.YOLO,
-        DetectorType.MTCNN, 
+        DetectorType.INSIGHTFACE, 
         DetectorType.MEDIAPIPE
     ]
     
@@ -180,32 +177,43 @@ class YOLOConfig:
         self.confidence_threshold = settings.YOLO_CONFIDENCE_THRESHOLD
         self.iou_threshold = settings.YOLO_IOU_THRESHOLD
         self.warmup_runs = settings.YOLO_WARMUP_RUNS
-        
-        # GPU settings
+          # GPU settings
         self.gpu_memory_limit = settings.VRAM_LIMIT_MB * 1024 * 1024
         self.device_id = 0
-        
-        # ONNX Runtime settings
-        self.ort_providers = [
-            ('CUDAExecutionProvider', {
-                'device_id': self.device_id,
-                'arena_extend_strategy': 'kNextPowerOfTwo',
-                'gpu_mem_limit': self.gpu_memory_limit,
-                'cudnn_conv_algo_search': 'HEURISTIC',
-                'enable_cuda_graph': False,
-                'tunable_op_enable': True,
-            }),
-            'CPUExecutionProvider'
-        ]
+          # ONNX Runtime settings
+        self.ort_providers = self._get_available_providers()
+
+    def _get_available_providers(self):
+        """Get available providers - FORCED CPU-ONLY for compatibility"""
+        try:
+            import onnxruntime as ort
+            
+            # Force CPU-only execution due to CUDA library compatibility issues
+            providers = []
+            
+            # CPU provider with optimized settings only
+            cpu_options = {
+                'intra_op_num_threads': 4,  # Limit CPU threads
+                'inter_op_num_threads': 2,
+            }
+            providers.append(('CPUExecutionProvider', cpu_options))
+            
+            print("⚠️  YOLO forced to CPU-only execution due to CUDA compatibility")
+            return providers
+            
+        except Exception as e:
+            print(f"⚠️  Provider setup failed: {e}. Using basic CPU provider.")
+            return ['CPUExecutionProvider']
 
 
-class MTCNNConfig:
-    """MTCNN-specific configuration"""
+class InsightFaceConfig:
+    """InsightFace-specific configuration"""
     
     def __init__(self, settings: Settings):
-        self.min_face_size = settings.MTCNN_MIN_FACE_SIZE
-        self.scale_factor = settings.MTCNN_SCALE_FACTOR
-        self.steps_threshold = settings.MTCNN_STEPS_THRESHOLD
+        self.model_name = settings.INSIGHTFACE_MODEL_NAME
+        self.det_size = settings.INSIGHTFACE_DET_SIZE
+        self.ctx_id = settings.INSIGHTFACE_CTX_ID
+        self.confidence_threshold = settings.INSIGHTFACE_CONFIDENCE_THRESHOLD
 
 
 class MediaPipeConfig:
@@ -222,13 +230,12 @@ class DetectionConfig:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.yolo = YOLOConfig(settings)
-        self.mtcnn = MTCNNConfig(settings)
+        self.insightface = InsightFaceConfig(settings)
         self.mediapipe = MediaPipeConfig(settings)
     
     def get_config_for_mode(self, mode: DetectionMode) -> Dict[str, Any]:
         """Get configuration for detection mode"""
-        if mode == DetectionMode.REALTIME:
-            return {
+        if mode == DetectionMode.REALTIME:            return {
                 "detector": DetectorType.MEDIAPIPE,
                 "enable_quality_assessment": False,
                 "max_faces": 5,
@@ -236,7 +243,7 @@ class DetectionConfig:
             }
         elif mode == DetectionMode.BALANCED:
             return {
-                "detector": DetectorType.MTCNN,
+                "detector": DetectorType.INSIGHTFACE,
                 "enable_quality_assessment": True,
                 "max_faces": 10,
                 "confidence_threshold": 0.7

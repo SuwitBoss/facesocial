@@ -101,7 +101,7 @@ async def get_prometheus_metrics():
         
         # Detector availability
         available_detectors = detection_stats.get('available_detectors', [])
-        for detector in ['yolo', 'mtcnn', 'mediapipe']:
+        for detector in ['yolo', 'insightface', 'mediapipe']:
             available = 1 if detector in available_detectors else 0
             metrics.append(f"face_detection_{detector}_available {available}")
         

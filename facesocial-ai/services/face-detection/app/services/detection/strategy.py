@@ -202,30 +202,30 @@ class YOLODetectionStrategy(DetectionStrategy):
             self.is_loaded = False
 
 
-class MTCNNDetectionStrategy(DetectionStrategy):
-    """MTCNN-based detection strategy for balanced performance"""
+class InsightFaceDetectionStrategy(DetectionStrategy):
+    """InsightFace-based detection strategy for balanced performance"""
     
     def __init__(self):
-        super().__init__("MTCNN")
+        super().__init__("InsightFace")
         self.detector = None
         from app.core.config import detection_config
-        self.config = detection_config.mtcnn
+        self.config = detection_config.insightface
     
     async def detect_faces(
         self, 
         image: Any, 
         options: Dict[str, Any]
     ) -> DetectionResult:
-        """Detect faces using MTCNN"""
+        """Detect faces using InsightFace"""
         start_time = time.time()
         
         try:
             if self.detector is None:
                 await self._load_detector()
             
-            from app.services.detection.mtcnn_detector import MTCNNDetector
+            from app.services.detection.insightface_detector import InsightFaceDetector
             
-            faces = await MTCNNDetector.detect_faces_static(
+            faces = await InsightFaceDetector.detect_faces_static(
                 self.detector, image, options
             )
             
@@ -239,55 +239,58 @@ class MTCNNDetectionStrategy(DetectionStrategy):
                 faces=faces,
                 total_faces=len(faces),
                 processing_time=processing_time,
-                model_used="MTCNN",
+                model_used="InsightFace",
                 image_info={"width": image.shape[1], "height": image.shape[0]},
                 performance_metrics={
                     "inference_time": processing_time,
-                    "cpu_usage": self._get_cpu_usage()
+                    "gpu_usage": self._get_gpu_usage()
                 }
             )
             
         except Exception as e:
             self.error_count += 1
-            self.logger.error(f"MTCNN detection failed: {e}")
+            self.logger.error(f"InsightFace detection failed: {e}")
             raise
     
     async def _load_detector(self):
-        """Load MTCNN detector"""
+        """Load InsightFace detector"""
         try:
-            from mtcnn import MTCNN
+            from app.services.detection.insightface_detector import InsightFaceDetector
             
-            self.detector = MTCNN(
-                min_face_size=self.config.min_face_size,
-                scale_factor=self.config.scale_factor,
-                steps_threshold=self.config.steps_threshold
+            self.detector = await InsightFaceDetector.create_detector(
+                model_name=self.config.model_name,
+                det_size=self.config.det_size,
+                ctx_id=self.config.ctx_id
             )
             
-            self.logger.info("MTCNN detector loaded successfully")
+            self.logger.info("InsightFace detector loaded successfully")
             
         except Exception as e:
-            self.logger.error(f"Failed to load MTCNN: {e}")
+            self.logger.error(f"Failed to load InsightFace: {e}")
             raise
     
-    def _get_cpu_usage(self) -> float:
-        """Get current CPU usage"""
+    def _get_gpu_usage(self) -> float:
+        """Get current GPU usage"""
         try:
-            import psutil
-            return psutil.cpu_percent()
+            import pynvml
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            return (info.used / info.total) * 100
         except:
             return 0.0
     
     async def is_available(self) -> bool:
-        """Check if MTCNN is available"""
+        """Check if InsightFace is available"""
         try:
-            import mtcnn
+            import insightface
             return True
         except ImportError:
-            self.logger.warning("MTCNN not installed")
+            self.logger.warning("InsightFace not installed")
             return False
     
     async def warm_up(self) -> bool:
-        """Warm up MTCNN model"""
+        """Warm up InsightFace model"""
         try:
             await self._load_detector()
             
@@ -295,17 +298,20 @@ class MTCNNDetectionStrategy(DetectionStrategy):
             import numpy as np
             dummy_image = np.random.randint(0, 255, (640, 640, 3), dtype=np.uint8)
             
-            result = self.detector.detect_faces(dummy_image)
+            from app.services.detection.insightface_detector import InsightFaceDetector
+            await InsightFaceDetector.detect_faces_static(
+                self.detector, dummy_image, {"enable_quality_assessment": False}
+            )
             
-            self.logger.info("MTCNN model warmed up successfully")
+            self.logger.info("InsightFace model warmed up successfully")
             return True
             
         except Exception as e:
-            self.logger.error(f"MTCNN warmup failed: {e}")
+            self.logger.error(f"InsightFace warmup failed: {e}")
             return False
     
     async def shutdown(self):
-        """Shutdown MTCNN detector"""
+        """Shutdown InsightFace detector"""
         self.detector = None
 
 
@@ -360,18 +366,27 @@ class MediaPipeDetectionStrategy(DetectionStrategy):
             raise
     
     async def _load_detector(self):
-        """Load MediaPipe detector"""
+        """Load MediaPipe detector with better error handling"""
         try:
             import mediapipe as mp
             
+            # ✅ แก้ไข: เพิ่ม error handling ที่ดีกว่า
             self.mp_face_detection = mp.solutions.face_detection
-            self.detector = self.mp_face_detection.FaceDetection(
-                model_selection=0,  # 0 for close-range, 1 for full-range
-                min_detection_confidence=self.config.min_detection_confidence
-            )
             
-            self.logger.info("MediaPipe detector loaded successfully")
-            
+            # สร้าง detector ด้วย try-catch
+            try:
+                self.detector = self.mp_face_detection.FaceDetection(
+                    model_selection=0,
+                    min_detection_confidence=self.config.min_detection_confidence
+                )
+                self.logger.info("MediaPipe detector loaded successfully")
+            except Exception as init_error:
+                self.logger.error(f"MediaPipe initialization failed: {init_error}")
+                raise
+                
+        except ImportError as e:
+            self.logger.error(f"MediaPipe not installed: {e}")
+            raise RuntimeError("MediaPipe not available") from e
         except Exception as e:
             self.logger.error(f"Failed to load MediaPipe: {e}")
             raise
@@ -426,7 +441,7 @@ class FaceDetectionManager:
     def __init__(self):
         self.strategies = {
             DetectorType.YOLO: YOLODetectionStrategy(),
-            DetectorType.MTCNN: MTCNNDetectionStrategy(),
+            DetectorType.INSIGHTFACE: InsightFaceDetectionStrategy(),
             DetectorType.MEDIAPIPE: MediaPipeDetectionStrategy()
         }
         

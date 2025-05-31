@@ -46,7 +46,7 @@ def check_model():
             print(f"✅ YOLO model found: {path}")
             return True
     
-    print("⚠️  YOLO model not found. Service will work with MTCNN/MediaPipe only.")
+    print("⚠️  YOLO model not found. Service will work with InsightFace/MediaPipe only.")
     print("To download YOLO model, run: python scripts/download_models.py")
     return False
 

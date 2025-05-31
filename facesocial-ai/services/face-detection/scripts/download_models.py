@@ -235,13 +235,10 @@ models:
     iou_threshold: 0.45
     provider: "CUDAExecutionProvider"
     fallback_provider: "CPUExecutionProvider"
-  
-  mtcnn:
+    insightface:
     type: "face_detection"
-    min_face_size: 20
-    scale_factor: 0.709
-    steps_threshold: [0.6, 0.7, 0.7]
-    provider: "CPUExecutionProvider"
+    provider: "GPUExecutionProvider"
+    fallback_provider: "CPUExecutionProvider"
   
   mediapipe:
     type: "face_detection"

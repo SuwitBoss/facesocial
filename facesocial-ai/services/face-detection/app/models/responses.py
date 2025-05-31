@@ -101,7 +101,7 @@ class MetricsResponse(BaseModel):
 class ModelInfo(BaseModel):
     """Model information response"""
     name: str = Field(..., description="Model name")
-    type: str = Field(..., description="Model type (YOLO, MTCNN, MediaPipe)")
+    type: str = Field(..., description="Model type (YOLO, InsightFace, MediaPipe)")
     loaded: bool = Field(..., description="Whether model is loaded")
     memory_usage_mb: Optional[float] = Field(None, description="Memory usage in MB")
     last_used: Optional[str] = Field(None, description="Last usage timestamp")

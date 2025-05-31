@@ -15,16 +15,14 @@ numpy>=1.23.5,<1.25.0
 scikit-image==0.22.0
 imageio==2.33.1
 
-# MTCNN for face detection
-mtcnn==0.1.1
-tensorflow>=2.15.0,<2.18.0
-keras>=2.15.0,<3.0.0
+# InsightFace for face detection and analysis
+insightface==0.7.3
 
 # MediaPipe for real-time face detection
 mediapipe==0.10.8
 
-# ONNX Runtime (CPU version, GPU installed in Dockerfile)
-onnxruntime==1.16.3
+# ONNX Runtime (GPU version for CUDA 12.x)
+onnxruntime-gpu==1.20.0
 
 # Database and caching
 asyncpg==0.29.0
