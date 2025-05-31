@@ -41,32 +41,49 @@ class VRAMManager:
         self.loading_locks: Dict[str, asyncio.Lock] = {}
         self.cleanup_task: Optional[asyncio.Task] = None
         self.logger = logging.getLogger(__name__)
-        
-        # Performance tracking
+          # Performance tracking
         self.total_inferences = 0
         self.memory_warnings = 0
         self.model_swaps = 0
         
-        # Start background cleanup task
-        self._start_cleanup_task()
+        # Don't start cleanup task immediately - wait for event loop
     
     async def get_gpu_memory_info(self) -> Dict[str, float]:
-        """Get current GPU memory usage"""
+        """Get current GPU memory usage with improved detection"""
         try:
-            gpus = GPUtil.getGPUs()
-            if not gpus:
-                return {"total": 0, "used": 0, "free": 0, "utilization": 0}
-            
-            gpu = gpus[0]  # Use first GPU
-            return {
-                "total": gpu.memoryTotal,
-                "used": gpu.memoryUsed,
-                "free": gpu.memoryFree,
-                "utilization": gpu.memoryUtil * 100
-            }
+            # Try pynvml first (more reliable)
+            try:
+                import pynvml
+                pynvml.nvmlInit()
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                
+                return {
+                    "total": info.total / (1024**2),  # Convert to MB
+                    "used": info.used / (1024**2),
+                    "free": info.free / (1024**2),
+                    "utilization": (info.used / info.total) * 100
+                }
+            except Exception as pynvml_error:
+                self.logger.debug(f"pynvml failed, trying GPUtil: {pynvml_error}")
+                # Fallback to GPUtil
+                gpus = GPUtil.getGPUs()
+                if gpus:
+                    gpu = gpus[0]
+                    return {
+                        "total": gpu.memoryTotal,
+                        "used": gpu.memoryUsed, 
+                        "free": gpu.memoryFree,
+                        "utilization": gpu.memoryUtil * 100
+                    }
+                else:
+                    self.logger.debug("No GPUs found via GPUtil")
         except Exception as e:
             self.logger.warning(f"Failed to get GPU memory info: {e}")
-            return {"total": 6144, "used": 0, "free": 6144, "utilization": 0}
+        
+        # Return defaults if no GPU detected
+        self.logger.info("No GPU detected, using CPU fallback values")
+        return {"total": 0, "used": 0, "free": 0, "utilization": 0}
     
     async def estimate_model_memory(self, model_path: str) -> float:
         """Estimate memory usage for a model (in MB)"""
@@ -220,8 +237,7 @@ class VRAMManager:
             if model_info.session:
                 del model_info.session
             
-            # Remove from tracking
-            del self.loaded_models[model_name]
+            # Remove from tracking            del self.loaded_models[model_name]
             
             self.logger.info(f"Unloaded model {model_name}, "
                            f"freed ~{model_info.memory_usage_mb:.1f}MB")
@@ -238,8 +254,14 @@ class VRAMManager:
     
     def _start_cleanup_task(self):
         """Start background task for automatic cleanup"""
-        if self.cleanup_task is None or self.cleanup_task.done():
-            self.cleanup_task = asyncio.create_task(self._cleanup_loop())
+        try:
+            # Only create task if there's a running event loop
+            loop = asyncio.get_running_loop()
+            if self.cleanup_task is None or self.cleanup_task.done():
+                self.cleanup_task = asyncio.create_task(self._cleanup_loop())
+        except RuntimeError:
+            # No event loop running, will start later when needed
+            self.logger.debug("No event loop running, cleanup task will start when needed")
     
     async def _cleanup_loop(self):
         """Background loop for cleaning up unused models"""

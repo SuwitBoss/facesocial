@@ -1,5 +1,4 @@
-# Python dependencies
-# Face Detection Service Dependencies
+# Face Detection Service Dependencies - FIXED VERSION
 
 # FastAPI and ASGI server
 fastapi==0.104.1
@@ -8,21 +7,23 @@ python-multipart==0.0.6
 pydantic==2.5.0
 pydantic-settings==2.1.0
 
-# Image processing and computer vision
+# Image processing and computer vision - Fixed compatible versions
 opencv-python==4.8.1.78
+opencv-contrib-python==4.8.1.78
 Pillow==10.1.0
-numpy==1.24.4
+numpy>=1.23.5,<1.25.0
 scikit-image==0.22.0
 imageio==2.33.1
 
 # MTCNN for face detection
 mtcnn==0.1.1
-tensorflow==2.13.0
+tensorflow>=2.15.0,<2.18.0
+keras>=2.15.0,<3.0.0
 
 # MediaPipe for real-time face detection
 mediapipe==0.10.8
 
-# ONNX Runtime (CPU version first, GPU installed in Dockerfile)
+# ONNX Runtime (CPU version, GPU installed in Dockerfile)
 onnxruntime==1.16.3
 
 # Database and caching
@@ -35,23 +36,20 @@ psycopg2-binary==2.9.9
 # HTTP clients and async support
 httpx==0.25.2
 aiofiles==23.2.1
-aioredis==2.0.1
 
 # Monitoring and metrics
 prometheus-client==0.19.0
 psutil==5.9.6
 
+# GPU monitoring (NVIDIA) - FIXED VERSIONS
+nvidia-ml-py3==7.352.0
+GPUtil==1.4.0
+pynvml==11.5.0
+
 # Logging and configuration
 loguru==0.7.2
 pyyaml==6.0.1
 python-dotenv==1.0.0
-
-# Image format support
-opencv-contrib-python==4.8.1.78
-
-# GPU monitoring (NVIDIA)
-nvidia-ml-py3==7.352.0
-GPUtil==1.4.0
 
 # Performance and optimization
 numba==0.58.1
@@ -64,42 +62,32 @@ typing-extensions==4.8.0
 pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
-httpx==0.25.2
-
-# Development dependencies
-black==23.11.0
-isort==5.12.0
-flake8==6.1.0
-mypy==1.7.1
 
 # Security and authentication
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-python-multipart==0.0.6
 
 # Utilities
 python-dateutil==2.8.2
 pytz==2023.3
 click==8.1.7
 
-# Memory profiling and debugging
-memory-profiler==0.61.0
-py-spy==0.3.14
-
 # File format support
 imageio-ffmpeg==0.4.9
-
-# Additional OpenCV support
-opencv-python-headless==4.8.1.78
 
 # Math and scientific computing
 pandas==2.1.4
 matplotlib==3.8.2
 
-# Async utilities
-anyio==4.1.0
-trio==0.23.2
+# Async utilities - Fixed compatible version
+anyio==3.7.1
 
 # Configuration management
-hydra-core==1.3.2
 omegaconf==2.3.0
+
+# Memory profiling (optional)
+memory-profiler==0.61.0
+
+# Additional dependencies for face detection
+requests==2.31.0
+tqdm==4.66.1

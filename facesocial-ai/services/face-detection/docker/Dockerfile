@@ -68,7 +68,7 @@ RUN python3 -m pip install --no-cache-dir \
 
 # Copy application code
 COPY app/ ./app/
-COPY models/ ./models/
+COPY ../../../models/ ./models/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
 

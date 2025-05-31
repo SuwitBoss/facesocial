@@ -3,13 +3,16 @@ Face Detection Strategy Pattern
 Routes detection requests to appropriate models based on use case
 """
 
-import asyncio
+import os
 import time
 import logging
+import asyncio
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
 from enum import Enum
+
+import numpy as np
 
 from app.core.config import DetectionMode, DetectorType, settings
 from app.services.gpu.vram_manager import vram_manager

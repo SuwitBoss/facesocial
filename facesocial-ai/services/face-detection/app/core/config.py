@@ -1,12 +1,16 @@
-# app/core/config.py - Fixed version
 """
 Face Detection Service Configuration - FIXED
 """
 
 import os
 from typing import List, Optional, Dict, Any
-from pydantic import BaseSettings, validator
 from enum import Enum
+
+try:
+    from pydantic_settings import BaseSettings
+    from pydantic import field_validator
+except ImportError:
+    from pydantic import BaseSettings, validator as field_validator
 
 
 class DetectionMode(str, Enum):
@@ -43,25 +47,32 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://:redis_2024@redis:6379/0"
     
     # Model Paths - FIXED PATHS
-    MODEL_BASE_PATH: str = "./models"  # ← Changed from /app/models
+    MODEL_BASE_PATH: str = "./models"
     
     @property 
     def YOLO_MODEL_PATH(self) -> str:
-        """Dynamic YOLO model path"""
-        # Check multiple possible locations
+        """Dynamic YOLO model path - FIXED"""
+        # Primary path ตาม structure จริง
+        primary_path = "facesocial-ai/models/face-detection/yolov10n-face.onnx"
+        
+        # Check from current working directory
         possible_paths = [
-            "./models/face-detection/yolov10n-face.onnx",           # Local development
-            "/app/models/face-detection/yolov10n-face.onnx",       # Docker container
-            "../models/face-detection/yolov10n-face.onnx",        # Relative path
-            "../../models/face-detection/yolov10n-face.onnx"      # Alternative relative
+            primary_path,                                                   # จาก project root
+            "./models/face-detection/yolov10n-face.onnx",                 # จาก service directory  
+            "../models/face-detection/yolov10n-face.onnx",                # relative from service
+            "../../models/face-detection/yolov10n-face.onnx",             # relative from app
+            "/app/models/face-detection/yolov10n-face.onnx",              # Docker container
+            "./facesocial-ai/models/face-detection/yolov10n-face.onnx"    # Alternative
         ]
         
         for path in possible_paths:
             if os.path.exists(path):
+                print(f"✅ Found YOLO model at: {path}")
                 return path
         
-        # Fallback to default
-        return "./models/face-detection/yolov10n-face.onnx"
+        # Return primary path as fallback
+        print(f"⚠️  YOLO model not found, using primary path: {primary_path}")
+        return primary_path
     
     CONFIG_PATH: str = "./config"
     
@@ -160,7 +171,6 @@ class Settings(BaseSettings):
         case_sensitive = True
 
 
-# Rest of the config classes remain the same...
 class YOLOConfig:
     """YOLO-specific configuration"""
     
@@ -189,6 +199,59 @@ class YOLOConfig:
         ]
 
 
+class MTCNNConfig:
+    """MTCNN-specific configuration"""
+    
+    def __init__(self, settings: Settings):
+        self.min_face_size = settings.MTCNN_MIN_FACE_SIZE
+        self.scale_factor = settings.MTCNN_SCALE_FACTOR
+        self.steps_threshold = settings.MTCNN_STEPS_THRESHOLD
+
+
+class MediaPipeConfig:
+    """MediaPipe-specific configuration"""
+    
+    def __init__(self, settings: Settings):
+        self.min_detection_confidence = settings.MEDIAPIPE_MIN_DETECTION_CONFIDENCE
+        self.min_tracking_confidence = settings.MEDIAPIPE_MIN_TRACKING_CONFIDENCE
+
+
+class DetectionConfig:
+    """Detection configuration for different modes"""
+    
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self.yolo = YOLOConfig(settings)
+        self.mtcnn = MTCNNConfig(settings)
+        self.mediapipe = MediaPipeConfig(settings)
+    
+    def get_config_for_mode(self, mode: DetectionMode) -> Dict[str, Any]:
+        """Get configuration for detection mode"""
+        if mode == DetectionMode.REALTIME:
+            return {
+                "detector": DetectorType.MEDIAPIPE,
+                "enable_quality_assessment": False,
+                "max_faces": 5,
+                "confidence_threshold": 0.7
+            }
+        elif mode == DetectionMode.BALANCED:
+            return {
+                "detector": DetectorType.MTCNN,
+                "enable_quality_assessment": True,
+                "max_faces": 10,
+                "confidence_threshold": 0.7
+            }
+        elif mode == DetectionMode.ACCURATE:
+            return {
+                "detector": DetectorType.YOLO,
+                "enable_quality_assessment": True,
+                "max_faces": 20,
+                "confidence_threshold": 0.25
+            }
+        else:
+            return self.get_config_for_mode(DetectionMode.BALANCED)
+
+
 # Global settings instance
 settings = Settings()
 
@@ -197,7 +260,7 @@ if not settings.validate_model_paths():
     print("⚠️  Model validation failed - some features may not work")
 
 # Detection configuration
-detection_config = DetectionConfig(settings) if 'DetectionConfig' in globals() else None
+detection_config = DetectionConfig(settings)
 
 # Export commonly used configs
 __all__ = [

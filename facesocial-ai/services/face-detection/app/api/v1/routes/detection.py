@@ -71,30 +71,40 @@ async def validate_image(image_file: UploadFile) -> np.ndarray:
 def create_detection_response(result, request_metadata: Dict[str, Any]) -> Dict[str, Any]:
     """Create standardized detection response"""
     
-    return {
-        "success": True,
-        "data": {
-            "faces": [
-                {
-                    "bbox": face.bbox,
-                    "confidence": face.confidence,
-                    "quality_score": face.quality_score,
-                    "landmarks": face.landmarks,
-                    "attributes": face.attributes
-                }
-                for face in result.faces
-            ],
-            "total_faces": result.total_faces,
-            "image_info": result.image_info,
-            "model_used": result.model_used,
-            "processing_time": result.processing_time
-        },
-        "metadata": {
-            "request_id": request_metadata.get("request_id"),
-            "timestamp": time.time(),
-            "model_version": result.model_used,
-            "performance_metrics": result.performance_metrics
+    # Convert DetectedFace objects to FaceDetection format
+    faces = []
+    for face in result.faces:
+        face_detection = {
+            "bbox": {
+                "x": face.bbox.get("x", 0),
+                "y": face.bbox.get("y", 0), 
+                "width": face.bbox.get("width", 0),
+                "height": face.bbox.get("height", 0)
+            },
+            "confidence": face.confidence,
+            "landmarks": face.landmarks,
+            "face_id": None
         }
+        
+        # Add quality metrics if available
+        if face.quality_score is not None:
+            face_detection["quality_metrics"] = {
+                "sharpness": face.quality_score,
+                "brightness": face.quality_score,
+                "size": face.quality_score,
+                "overall_score": face.quality_score
+            }
+        
+        faces.append(face_detection)
+    
+    return {
+        "status": "success",
+        "faces": faces,
+        "face_count": result.total_faces,
+        "processing_time": result.processing_time,
+        "detector_used": result.model_used,
+        "image_info": result.image_info,
+        "message": f"Successfully detected {result.total_faces} faces"
     }
 
 
@@ -311,38 +321,78 @@ async def batch_detect_faces(
                         "success": False,
                         "error": str(e)
                     })
-        
-        # Sort results by image index to maintain order
+          # Sort results by image index to maintain order
         results.sort(key=lambda x: x["image_index"])
         
         # Calculate statistics
         successful_results = [r for r in results if r["success"]]
         total_faces = sum(r.get("total_faces", 0) for r in successful_results)
-        avg_processing_time = (
-            sum(r.get("processing_time", 0) for r in successful_results) / 
-            len(successful_results) if successful_results else 0
-        )
         
         total_processing_time = time.time() - start_time
         
-        response = {
-            "success": True,
-            "data": {
-                "results": results,
-                "summary": {
-                    "total_images": len(images),
-                    "successful_detections": len(successful_results),
-                    "failed_detections": len(results) - len(successful_results),
-                    "total_faces_detected": total_faces,
-                    "average_processing_time": avg_processing_time,
-                    "parallel_processing": parallel_processing
+        # Convert results to BatchDetectionItem format
+        batch_items = []
+        for result in results:
+            if result["success"]:
+                # Convert the face data to proper format
+                faces = []
+                for face_data in result.get("faces", []):
+                    face_detection = {
+                        "bbox": {
+                            "x": face_data["bbox"].get("x", 0) if isinstance(face_data["bbox"], dict) else 0,
+                            "y": face_data["bbox"].get("y", 0) if isinstance(face_data["bbox"], dict) else 0,
+                            "width": face_data["bbox"].get("width", 0) if isinstance(face_data["bbox"], dict) else 0,
+                            "height": face_data["bbox"].get("height", 0) if isinstance(face_data["bbox"], dict) else 0
+                        },
+                        "confidence": face_data.get("confidence", 0),
+                        "landmarks": face_data.get("landmarks"),
+                        "face_id": None
+                    }
+                    
+                    # Add quality metrics if available
+                    if face_data.get("quality_score") is not None:
+                        face_detection["quality_metrics"] = {
+                            "sharpness": face_data["quality_score"],
+                            "brightness": face_data["quality_score"],
+                            "size": face_data["quality_score"],
+                            "overall_score": face_data["quality_score"]
+                        }
+                    
+                    faces.append(face_detection)
+                
+                detection_result = {
+                    "status": "success",
+                    "faces": faces,
+                    "face_count": result.get("total_faces", 0),
+                    "processing_time": result.get("processing_time", 0),
+                    "detector_used": result.get("model_used", "unknown"),
+                    "image_info": {"filename": result.get("filename", "")},
+                    "message": f"Successfully detected {result.get('total_faces', 0)} faces"
                 }
-            },
-            "metadata": {
-                "request_id": f"batch_{int(time.time())}",
-                "timestamp": time.time(),
-                "total_processing_time": total_processing_time
-            }
+            else:
+                detection_result = {
+                    "status": "error",
+                    "faces": [],
+                    "face_count": 0,
+                    "processing_time": 0,
+                    "detector_used": "none",
+                    "image_info": {"filename": result.get("filename", "")},
+                    "message": result.get("error", "Detection failed")
+                }
+            
+            batch_items.append({
+                "image_id": result.get("filename", f"image_{result['image_index']}"),
+                "result": detection_result
+            })
+        
+        response = {
+            "status": "success" if len(successful_results) > 0 else "failed",
+            "results": batch_items,
+            "total_images": len(images),
+            "successful_detections": len(successful_results),
+            "failed_detections": len(results) - len(successful_results),
+            "total_processing_time": total_processing_time,
+            "batch_id": f"batch_{int(time.time())}"
         }
         
         logger.info(f"Batch detection completed: {len(successful_results)}/{len(images)} "
