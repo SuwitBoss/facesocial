@@ -42,10 +42,9 @@ class Settings(BaseSettings):
     # Database Configuration
     POSTGRES_URL: str = "postgresql+asyncpg://facesocial_user:facesocial_2024@postgres:5432/facesocial"
     REDIS_URL: str = "redis://:redis_2024@redis:6379/0"
-    
-    # Model Paths
+      # Model Paths
     MODEL_BASE_PATH: str = "/app/models"
-    YOLO_MODEL_PATH: str = "/app/models/yolov10n-face.onnx"
+    YOLO_MODEL_PATH: str = "/app/models/face-detection/yolov10n-face.onnx"
     CONFIG_PATH: str = "/app/config"
     
     # GPU Configuration
